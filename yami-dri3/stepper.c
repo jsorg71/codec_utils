@@ -5,12 +5,15 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xlib-xcb.h>
 
 #include <xcb/dri3.h>
+
+//#include <libdrm/drm.h>
 
 #include <va/va.h>
 #include <va/va_drm.h>
@@ -108,15 +111,23 @@ va_copy_surface(VASurfaceID src_sur,
                 int dstx, int dsty, int dstwidth, int dstheight)
 {
     int status;
+    int bytes;
     VABufferID pipeline_buf;
     VARectangle input_region;
     VARectangle output_region;
     VAProcPipelineParameterBuffer* pipeline_param;
+    VABufferType buf_type;
     void* buf;
 
-    printf("va_copy_surface: srcx %d srcy %d srcwidth %d srcheight %d\n", srcx, srcy, srcwidth, srcheight);
-    status = vaCreateBuffer(g_va_display, g_vpp_ctx, VAProcPipelineParameterBufferType, sizeof(VAProcPipelineParameterBuffer), 1, NULL, &pipeline_buf);
-    printf("va_copy_surface: vaCreateBuffer status %d\n", status);
+    //printf("va_copy_surface: srcx %d srcy %d srcwidth %d srcheight %d\n", srcx, srcy, srcwidth, srcheight);
+    buf_type = VAProcPipelineParameterBufferType;
+    bytes = sizeof(VAProcPipelineParameterBuffer);
+    status = vaCreateBuffer(g_va_display, g_vpp_ctx, buf_type, bytes, 1, NULL, &pipeline_buf);
+    if (status != 0)
+    {
+        printf("va_copy_surface: vaCreateBuffer status %d\n", status); 
+        return 1;
+    }
     input_region.x = srcx;
     input_region.y = srcy;
     input_region.width = srcwidth;
@@ -126,23 +137,44 @@ va_copy_surface(VASurfaceID src_sur,
     output_region.width = dstwidth;
     output_region.height = dstheight;
     status = vaMapBuffer(g_va_display, pipeline_buf, &buf);
-    printf("va_copy_surface: vaMapBuffer status %d\n", status);
+    if (status != 0)
+    {
+        printf("va_copy_surface: vaMapBuffer status %d\n", status);
+        return 1;
+    }
     pipeline_param = (VAProcPipelineParameterBuffer*)buf;
     memset(pipeline_param, 0, sizeof(VAProcPipelineParameterBuffer));
     pipeline_param->surface = src_sur;
     pipeline_param->surface_region = &input_region;
     pipeline_param->output_region = &output_region;
-    status = vaUnmapBuffer(g_va_display, pipeline_buf);
-    printf("va_copy_surface: vaUnmapBuffer status %d\n", status);
+    vaUnmapBuffer(g_va_display, pipeline_buf);
     status = vaBeginPicture(g_va_display, g_vpp_ctx, g_pixmap_surface);
-    printf("va_copy_surface: vaBeginPicture status %d\n", status);
+    if (status != 0)
+    {
+        printf("va_copy_surface: vaBeginPicture status %d\n", status);
+        vaDestroyBuffer(g_va_display, pipeline_buf);
+        return 1;
+    }
     status = vaRenderPicture(g_va_display, g_vpp_ctx, &pipeline_buf, 1);
-    printf("va_copy_surface: vaRenderPicture status %d\n", status);
-    status = vaEndPicture(g_va_display, g_vpp_ctx);
-    printf("va_copy_surface: vaEndPicture status %d\n", status);
-    status = vaSyncSurface(g_va_display, g_pixmap_surface);
-    printf("va_copy_surface: vaSyncSurface status %d\n", status);
+    if (status != 0)
+    {
+        printf("va_copy_surface: vaRenderPicture status %d\n", status); 
+        vaDestroyBuffer(g_va_display, pipeline_buf);
+        return 1;
+    }
     vaDestroyBuffer(g_va_display, pipeline_buf);
+    status = vaEndPicture(g_va_display, g_vpp_ctx);
+    if (status != 0)
+    {
+        printf("va_copy_surface: vaEndPicture status %d\n", status); 
+        return 1;
+    }
+    status = vaSyncSurface(g_va_display, g_pixmap_surface);
+    if (status != 0)
+    {
+        printf("va_copy_surface: vaSyncSurface status %d\n", status); 
+        return 1;
+    }
     return 0;
 }
 
@@ -249,6 +281,36 @@ resize_dri3()
     return 0; 
 }
 
+static char *
+find_render_node(int fd)
+{
+    struct stat master;
+    struct stat render;
+    char buf[128];
+
+    if (fstat(fd, &master))
+    {
+        return NULL;
+    }
+    if (!S_ISCHR(master.st_mode))
+    {
+        return NULL;
+    }
+    /* Are we a render-node ourselves? */
+    if (master.st_rdev & 0x80)
+    {
+        return NULL;
+    }
+    sprintf(buf, "/dev/dri/renderD%d", (int)((master.st_rdev | 0x80) & 0xff));
+    if ((stat(buf, &render) == 0) &&
+        (render.st_mode == master.st_mode) &&
+        (render.st_rdev == (master.st_rdev | 0x80)))
+    {
+        return strdup(buf);
+    }
+    return NULL;
+}
+
 static int
 setup_dri3(void)
 {
@@ -261,6 +323,13 @@ setup_dri3(void)
     xcb_generic_error_t* error;
     int* fds;
     int status;
+    //struct stat remote;
+    //struct stat local;
+    //int index;
+    //char device_filename[256];
+    //drm_version_t version;
+    char* render_node;
+    int fd;
 
     printf("setup_dri3\n");
     error = NULL;
@@ -315,7 +384,76 @@ setup_dri3(void)
     free(error);
     error = NULL;
 
-    g_va_display = vaGetDisplayDRM(g_drm_fd); 
+    render_node = find_render_node(g_drm_fd);
+    if (render_node != NULL)
+    {
+        fd = open(render_node, O_RDWR);
+        if (fd != -1)
+        {
+            /* close fd we got from xserver */
+            close(g_drm_fd);
+            /* set the render node fd */
+            g_drm_fd = fd;
+        }
+        free(render_node);
+    }
+
+#if 0
+    memset(&version, 0, sizeof(version));
+    memset(device_filename, 0, 256);
+    version.name = device_filename;
+    version.name_len = 255;
+    index = ioctl(g_drm_fd, DRM_IOCTL_VERSION, &version);
+    printf("index %d name %s\n", index, device_filename);
+
+    struct drm_agp_info ii;
+    memset(&ii, 0, sizeof(ii));
+    index = ioctl(g_drm_fd, DRM_IOCTL_AGP_INFO, &ii);
+    printf("index %d id_vendor %d id_device %d\n", index, ii.id_vendor, ii.id_device);
+
+    int fd;
+    fstat(g_drm_fd, &remote);
+
+    printf("render node %s\n", find_render_node(g_drm_fd));
+
+    for (index = 0; index < 16; index++)
+    {
+        snprintf(device_filename, 255, "/dev/dri/card%d", index);
+        if (stat(device_filename, &local) == 0)
+        {
+            printf("device_filename %s st_mode %d st_rdev 0x%8.8x\n", device_filename, (int)local.st_mode, (int)local.st_rdev);
+            fd = open(device_filename, O_RDWR);
+            printf("render node 1 %s\n", find_render_node(fd));
+            memset(&version, 0, sizeof(version));
+            memset(device_filename, 0, 256);
+            version.name = device_filename;
+            version.name_len = 255;
+            ioctl(fd, DRM_IOCTL_VERSION, &version);
+            printf("1 name %s\n", device_filename);
+            close(fd);
+        }
+        snprintf(device_filename, 255, "/dev/dri/renderD%d", 128 + index);
+        if (stat(device_filename, &local) == 0)
+        {
+            printf("device_filename %s st_mode %d st_rdev 0x%8.8x\n", device_filename, (int)local.st_mode, (int)local.st_rdev);
+            fd = open(device_filename, O_RDWR);
+            printf("render node 2 %s\n", find_render_node(fd));
+            memset(&version, 0, sizeof(version));
+            memset(device_filename, 0, 256);
+            version.name = device_filename;
+            version.name_len = 255;
+            ioctl(fd, DRM_IOCTL_VERSION, &version);
+            printf("2 name %s\n", device_filename);
+            close(fd);
+        }
+        //printf("device_filename %s st_mode %d st_rdev %d\n", device_filename, (int)local.st_mode, (int)local.st_rdev);
+        //if (local.st_mode == remote.st_mode && local.st_rdev == remote.st_rdev)
+        //    return;
+    }
+    //fstat(g_drm_fd, &lstat);
+#endif
+
+    g_va_display = vaGetDisplayDRM(g_drm_fd);
     vaInitialize(g_va_display, &major, &minor);
 
     status = vaCreateConfig(g_va_display, VAProfileNone, VAEntrypointVideoProc, NULL, 0, &g_config_id);
@@ -338,7 +476,6 @@ main(int argc, char** argv)
     const VideoFormatInfo* fi;
     VideoFrame* vf;
     int status;
-    //int flags;
     int x;
     int y;
     int w;
@@ -408,7 +545,6 @@ main(int argc, char** argv)
     }
 
     beef_header = 1;
-    //flags = 0;
     data = (char*)malloc(BUF_BYTES);
 
     while (1)
