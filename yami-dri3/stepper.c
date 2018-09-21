@@ -5,7 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/ioctl.h>
+//#include <sys/ioctl.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -136,9 +136,11 @@ va_copy_surface(VASurfaceID src_sur,
     output_region.y = dsty;
     output_region.width = dstwidth;
     output_region.height = dstheight;
+    buf = NULL;
     status = vaMapBuffer(g_va_display, pipeline_buf, &buf);
     if (status != 0)
     {
+        vaDestroyBuffer(g_va_display, pipeline_buf);
         printf("va_copy_surface: vaMapBuffer status %d\n", status);
         return 1;
     }
@@ -162,19 +164,21 @@ va_copy_surface(VASurfaceID src_sur,
         vaDestroyBuffer(g_va_display, pipeline_buf);
         return 1;
     }
-    vaDestroyBuffer(g_va_display, pipeline_buf);
     status = vaEndPicture(g_va_display, g_vpp_ctx);
     if (status != 0)
     {
+        vaDestroyBuffer(g_va_display, pipeline_buf);
         printf("va_copy_surface: vaEndPicture status %d\n", status); 
         return 1;
     }
     status = vaSyncSurface(g_va_display, g_pixmap_surface);
     if (status != 0)
     {
+        vaDestroyBuffer(g_va_display, pipeline_buf);
         printf("va_copy_surface: vaSyncSurface status %d\n", status); 
         return 1;
     }
+    vaDestroyBuffer(g_va_display, pipeline_buf);
     return 0;
 }
 
