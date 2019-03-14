@@ -90,6 +90,88 @@ get_next_frame_no_beef(int fd, char* data, int* bytes, int* width, int* height)
     return 0;
 }
 
+#define LCLAMP(_val, _min, _max) (_val) < 0 ? 0 : ((_val) > 255 ? 255: (_val))
+
+static int
+yuv420_to_argb8888_no_sse2(unsigned char *yp, unsigned char *up, unsigned char *vp,
+                           unsigned int sy, unsigned int suv,
+                           int width, int height,
+                           unsigned int *rgb, unsigned int srgb)
+{
+    unsigned char* y08;
+    unsigned char* y18;
+    unsigned char* u8;
+    unsigned char* v8;
+    unsigned int* dst08;
+    unsigned int* dst18;
+    int y, u, v;
+    int r, g, b;
+    int c, d, e;
+    int index, jndex;
+
+    for (jndex = 0; jndex < height; jndex += 2)
+    {
+        y08 = yp + sy * jndex;
+        y18 = yp + sy * jndex + sy;
+        u8 = up + suv * (jndex / 2);
+        v8 = vp + suv * (jndex / 2);
+
+        dst08 = rgb + srgb * jndex;
+        dst18 = rgb + srgb * jndex + srgb;
+
+        index = 0;
+        while (index <= width - 2)
+        {
+            y = *(y08++);
+            u = *(u8++);
+            v = *(v8++);
+            c = y - 16;
+            d = u - 128;
+            e = v - 128;
+            b = (0x4A * c             + 0x81 * d) >> 6;
+            g = (0x4A * c - 0x34 * e  - 0x19 * d) >> 6;
+            r = (0x4A * c + 0x66 * e) >> 6;
+            b = LCLAMP(b, 0, 255);
+            g = LCLAMP(g, 0, 255);
+            r = LCLAMP(r, 0, 255);
+            *(dst08++) = (r << 16) | (g << 8) | b;
+
+            y = *(y18++);
+            c = y - 16;
+            b = (0x4A * c             + 0x81 * d) >> 6;
+            g = (0x4A * c - 0x34 * e  - 0x19 * d) >> 6;
+            r = (0x4A * c + 0x66 * e) >> 6;
+            b = LCLAMP(b, 0, 255);
+            g = LCLAMP(g, 0, 255);
+            r = LCLAMP(r, 0, 255);
+            *(dst18++) = (r << 16) | (g << 8) | b;
+
+            y = *(y08++);
+            c = y - 16;
+            b = (0x4A * c             + 0x81 * d) >> 6;
+            g = (0x4A * c - 0x34 * e  - 0x19 * d) >> 6;
+            r = (0x4A * c + 0x66 * e) >> 6;
+            b = LCLAMP(b, 0, 255);
+            g = LCLAMP(g, 0, 255);
+            r = LCLAMP(r, 0, 255);
+            *(dst08++) = (r << 16) | (g << 8) | b;
+
+            y = *(y18++);
+            c = y - 16;
+            b = (0x4A * c             + 0x81 * d) >> 6;
+            g = (0x4A * c - 0x34 * e  - 0x19 * d) >> 6;
+            r = (0x4A * c + 0x66 * e) >> 6;
+            b = LCLAMP(b, 0, 255);
+            g = LCLAMP(g, 0, 255);
+            r = LCLAMP(r, 0, 255);
+            *(dst18++) = (r << 16) | (g << 8) | b;
+
+            index += 2;
+        }
+    }
+    return 0;
+}
+
 int
 main(int argc, char** argv)
 {
@@ -98,8 +180,6 @@ main(int argc, char** argv)
     int bytes;
     int width;
     int height;
-    int status;
-    int flags;
     int x;
     int y;
     int w;
@@ -108,6 +188,8 @@ main(int argc, char** argv)
     XEvent evt;
     int error;
     int beef_header;
+    XImage* image;
+    char* idata;
 
     SBufferInfo targetInfo;
     unsigned char *targetBuffer[3];
@@ -141,7 +223,6 @@ main(int argc, char** argv)
     g_pix = XCreatePixmap(g_disp, g_win, g_winWidth, g_winHeight, g_depth);
 
     beef_header = 1;
-    flags = 0;
     data = (char*)malloc(BUF_BYTES);
 
     error = WelsCreateDecoder(&g_oh264Decoder);
@@ -217,7 +298,17 @@ main(int argc, char** argv)
                 XFreePixmap(g_disp, g_pix);
                 g_pix = XCreatePixmap(g_disp, g_win, g_winWidth, g_winHeight, g_depth);
             }
-
+            idata = (char*)malloc(width * height * 4);
+            yuv420_to_argb8888_no_sse2(targetBuffer[0], targetBuffer[1], targetBuffer[2],
+                                        targetInfo.UsrData.sSystemBuffer.iStride[0],
+                                        targetInfo.UsrData.sSystemBuffer.iStride[1],
+                                        width, height,
+                                        (unsigned int*)idata, width);
+            image = XCreateImage(g_disp, g_visual, 24, ZPixmap, 0, idata, width, height, 32, width * 4);
+            XPutImage(g_disp, g_pix, g_gc, image, 0, 0, 0, 0, width, height);
+            image->data = 0;
+            XDestroyImage(image);
+            free(idata);
             memset(&expose, 0, sizeof(expose));
             expose.type = Expose;
             expose.xexpose.display = g_disp;
