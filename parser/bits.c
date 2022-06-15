@@ -7,11 +7,7 @@
 
 static const int g_len_table[256] =
 {
-    1,
-    1,
-    2, 2,
-    3, 3, 3, 3,
-    4, 4, 4, 4, 4, 4, 4, 4,
+    1, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4,
     5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
     6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
     6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
@@ -34,7 +30,7 @@ in_uint(struct bits_t* bits, int num_bits)
 {
     int rv;
     int shift_pos;
-    unsigned long long mask;
+    long long mask;
 
     if (bits->error)
     {
@@ -47,14 +43,14 @@ in_uint(struct bits_t* bits, int num_bits)
     }
     while (bits->bits_left < num_bits)
     {
-        if (bits->data >= bits->end_data)
+        if (bits->offset >= bits->data_bytes)
         {
             bits->error = 1;
             return 0;
         }
         bits->byte_data <<= 8;
-        bits->byte_data |= (unsigned char)(bits->data[0]);
-        bits->data++;
+        bits->byte_data |= bits->data[bits->offset] & 0xFF;
+        bits->offset++;
         bits->bits_left += 8;
     }
     shift_pos = bits->bits_left - num_bits;
@@ -102,8 +98,8 @@ out_uint(struct bits_t* bits, int val, int num_bits)
     int index;
     int shift_pos;
     int bits_write_back;
-    unsigned long long byte_data;
-    unsigned long long mask;
+    long long byte_data;
+    long long mask;
 
     if (bits->error)
     {
@@ -116,14 +112,14 @@ out_uint(struct bits_t* bits, int val, int num_bits)
     }
     while (bits->bits_left < num_bits)
     {
-        if (bits->data >= bits->end_data)
+        if (bits->offset >= bits->data_bytes)
         {
             bits->error = 1;
             return 0;
         }
         bits->byte_data <<= 8;
-        bits->byte_data |= (unsigned char)(bits->data[0]);
-        bits->data++;
+        bits->byte_data |= bits->data[bits->offset] & 0xFF;
+        bits->offset++;
         bits->bits_left += 8;
     }
     shift_pos = bits->bits_left - num_bits;
@@ -137,7 +133,7 @@ out_uint(struct bits_t* bits, int val, int num_bits)
     byte_data = bits->byte_data;
     while (bits_write_back > 0)
     {
-        bits->data[index] = byte_data;
+        bits->data[bits->offset + index] = byte_data;
         byte_data >>= 8;
         bits_write_back -= 8;
         index--;
@@ -161,13 +157,13 @@ out_ueint(struct bits_t* bits, int val)
         {
             len = 24 + g_len_table[val >> 24];
         }
-        else if(val >= 0x00010000)
+        else if (val >= 0x00010000)
         {
             len = 16 + g_len_table[val >> 16];
         }
-        else if(val >= 0x00000100)
+        else if (val >= 0x00000100)
         {
-            len =  8 + g_len_table[val >> 8];
+            len = 8 + g_len_table[val >> 8];
         }
         else 
         {

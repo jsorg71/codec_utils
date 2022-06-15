@@ -128,7 +128,7 @@ sps_set_it(const char* data, int data_bytes, char* new_sps)
     bits = &lbits;
     memset(&lbits, 0, sizeof(lbits));
     lbits.data = rbsp;
-    lbits.end_data = rbsp + 64;
+    lbits.data_bytes = 64;
 
     in_uint(bits, 1); // forbidden_zero_bit
     in_uint(bits, 2); // nal_ref_idc
@@ -190,7 +190,7 @@ sps_set_it(const char* data, int data_bytes, char* new_sps)
         out_uint(bits, 0, 1); // align bits
     }
 
-    rbsp_bytes = bits->data - rbsp;
+    rbsp_bytes = bits->offset;
     printf("rbsp_bytes %d\n", rbsp_bytes);
 
     //memcpy(new_sps, data, data_bytes);
@@ -222,17 +222,19 @@ main(int argc, char** argv)
     struct bits_t lbits;
     memset(&lbits, 0, sizeof(lbits));
     lbits.data = new_sps;
-    lbits.end_data = lbits.data + 64;
+    lbits.data_bytes = 5;
     memset(new_sps, 0, sizeof(new_sps));
     hexdump(new_sps, 64);
-    in_uint(&lbits, 3);
-    out_uint(&lbits, 0x11223344, 21);
+    in_uint(&lbits, 1);
+    out_uint(&lbits, 0x11223344, 32);
+    printf("error %d\n", lbits.error);
     hexdump(new_sps, 64);
     memset(&lbits, 0, sizeof(lbits));
     lbits.data = new_sps;
-    lbits.end_data = lbits.data + 64;
-    in_uint(&lbits, 3);
-    printf("0x%8.8x\n", in_uint(&lbits, 21));
+    lbits.data_bytes = 5;
+    in_uint(&lbits, 1);
+    printf("0x%8.8x\n", in_uint(&lbits, 32));
+    printf("error %d\n", lbits.error);
     return 0;
 #endif
     if (argc < 3)

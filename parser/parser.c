@@ -74,12 +74,12 @@ process_sps(char* data, int bytes)
 
     memset(&bits, 0, sizeof(bits));
     bits.data = data;
-    bits.end_data = data + bytes;
+    bits.data_bytes = bytes;
     memset(&sps, 0, sizeof(sps));
     parse_sps(&bits, &sps);
 
     printf("    bits.error                              %d\n", bits.error);
-    printf("    bytes left                              %d\n", (int)(bits.end_data - bits.data));
+    printf("    bytes left                              %d\n", (int)(bits.data_bytes - bits.offset));
     printf("    forbidden_zero_bit                      %d\n", sps.forbidden_zero_bit);
     printf("    nal_ref_idc                             %d\n", sps.nal_ref_idc);
     printf("    nal_unit_type                           %d\n", sps.nal_unit_type);

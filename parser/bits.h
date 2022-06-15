@@ -4,9 +4,10 @@
 
 struct bits_t
 {
+    long long byte_data;
     char* data;
-    char* end_data;
-    unsigned long long byte_data;
+    int data_bytes;
+    int offset;
     int bits_left;
     int error;
 };
