@@ -36,9 +36,12 @@ in_uint(struct bits_t* bits, int num_bits)
     {
         return 0;
     }
+    if (num_bits < 1)
+    {
+        return 0;
+    }
     if (num_bits > 32)
     {
-        bits->error = 1;
         return 0;
     }
     while (bits->bits_left < num_bits)
@@ -105,9 +108,12 @@ out_uint(struct bits_t* bits, int val, int num_bits)
     {
         return 0;
     }
+    if (num_bits < 1)
+    {
+        return 0;
+    }
     if (num_bits > 32)
     {
-        bits->error = 1;
         return 0;
     }
     while (bits->bits_left < num_bits)
