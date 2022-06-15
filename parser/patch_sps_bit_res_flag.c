@@ -126,9 +126,7 @@ sps_set_it(const char* data, int data_bytes, char* new_sps)
     //hexdump(rbsp, rbsp_bytes);
 
     bits = &lbits;
-    memset(&lbits, 0, sizeof(lbits));
-    lbits.data = rbsp;
-    lbits.data_bytes = 64;
+    bits_init(bits, rbsp, 64);
 
     in_uint(bits, 1); // forbidden_zero_bit
     in_uint(bits, 2); // nal_ref_idc
@@ -220,18 +218,14 @@ main(int argc, char** argv)
     char new_sps[64];
 #if 0
     struct bits_t lbits;
-    memset(&lbits, 0, sizeof(lbits));
-    lbits.data = new_sps;
-    lbits.data_bytes = 5;
+    bits_init(&lbits, new_sps, 5);
     memset(new_sps, 0, sizeof(new_sps));
     hexdump(new_sps, 64);
     in_uint(&lbits, 1);
     out_uint(&lbits, 0x11223344, 32);
     printf("error %d\n", lbits.error);
     hexdump(new_sps, 64);
-    memset(&lbits, 0, sizeof(lbits));
-    lbits.data = new_sps;
-    lbits.data_bytes = 5;
+    bits_init(&lbits, new_sps, 5);
     in_uint(&lbits, 1);
     printf("0x%8.8x\n", in_uint(&lbits, 32));
     printf("error %d\n", lbits.error);

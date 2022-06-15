@@ -72,9 +72,7 @@ process_sps(char* data, int bytes)
     struct sps_t sps;
     struct bits_t bits;
 
-    memset(&bits, 0, sizeof(bits));
-    bits.data = data;
-    bits.data_bytes = bytes;
+    bits_init(&bits, data, bytes);
     memset(&sps, 0, sizeof(sps));
     parse_sps(&bits, &sps);
 

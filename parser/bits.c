@@ -26,6 +26,15 @@ static const int g_len_table[256] =
 };
 
 int
+bits_init(struct bits_t* bits, char* data, int data_bytes)
+{
+    memset(bits, 0, sizeof(struct bits_t));
+    bits->data = data;
+    bits->data_bytes = data_bytes;
+    return 0;
+}
+
+int
 in_uint(struct bits_t* bits, int num_bits)
 {
     int rv;

@@ -13,6 +13,9 @@ struct bits_t
 };
 
 int
+bits_init(struct bits_t* bits, char* data, int data_bytes);
+
+int
 in_uint(struct bits_t* bits, int num_bits);
 int
 in_ueint(struct bits_t* bits);
