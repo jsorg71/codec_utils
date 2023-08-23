@@ -138,7 +138,7 @@ nal_to_rbsp(const char* nal_buf, int* nal_size, char* rbsp_buf, int* rbsp_size)
     { 
         /* in NAL unit, 0x000000, 0x000001 or 0x000002 shall not occur at any
            byte-aligned position */
-        if ((count == 2) && (nal_buf[i] < 0x03))
+        if ((count == 2) && ((unsigned char)nal_buf[i] < 0x03))
         {
             return -1;
         }
